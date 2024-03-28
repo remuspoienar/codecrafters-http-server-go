@@ -29,8 +29,11 @@ func main() {
 			os.Exit(1)
 		}
 
-		reader := bufio.NewReader(conn)
-		head, err := reader.ReadString('\r')
+		scanner := bufio.NewScanner(conn)
+		scanner.Split(bufio.ScanLines)
+
+		scanner.Scan()
+		head := scanner.Text()
 
 		if err != nil {
 			fmt.Println("Error parsing connection: ", err.Error())
@@ -40,10 +43,30 @@ func main() {
 		parts := strings.Split(head, " ")
 		verb, path := parts[0], parts[1]
 
+		if verb == GET && strings.Contains(path, "/user-agent") {
+			var ua string
+
+			for scanner.Scan() {
+				line := scanner.Text()
+				if line == "" {
+					break
+				}
+				if strings.Contains(line, "User-Agent:") {
+					ua = strings.Split(line, "User-Agent: ")[1]
+					break
+				}
+			}
+
+			fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(ua), ua)
+			conn.Close()
+			continue
+		}
+
 		if verb == GET && strings.Contains(path, "/echo/") {
 			splitPath := strings.Split(path, "echo/")
 			text := splitPath[len(splitPath)-1:][0]
 			fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(text), text)
+			conn.Close()
 			continue
 		}
 
