@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"strings"
 
@@ -11,6 +12,8 @@ import (
 )
 
 const GET = "GET"
+
+var directory string
 
 func handleConn(conn net.Conn) {
 	defer conn.Close()
@@ -28,6 +31,18 @@ func handleConn(conn net.Conn) {
 
 	parts := strings.Split(head, " ")
 	verb, path := parts[0], parts[1]
+
+	if verb == GET && strings.Contains(path, "/files/") {
+		splitPath := strings.Split(path, "files/")
+		filename := splitPath[1]
+		fullPath := strings.TrimRight(directory, "/") + "/" + filename
+
+		text, err := os.ReadFile(fullPath)
+
+		if err == nil {
+			fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s", len(text), text)
+		}
+	}
 
 	if verb == GET && strings.Contains(path, "/user-agent") {
 		var ua string
@@ -64,6 +79,8 @@ func handleConn(conn net.Conn) {
 
 }
 func main() {
+	flag.StringVar(&directory, "directory", "", "Directory to scan for files")
+	flag.Parse()
 
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
