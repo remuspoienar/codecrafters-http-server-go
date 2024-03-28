@@ -2,61 +2,63 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
-	"strings"
-
-	// Uncomment this block to pass the first stage
+	"io"
 	"net"
+	"net/http"
 	"os"
+	"strings"
 )
 
 const GET = "GET"
+const POST = "POST"
 
 var directory string
 
 func handleConn(conn net.Conn) {
 	defer conn.Close()
 
-	scanner := bufio.NewScanner(conn)
-	scanner.Split(bufio.ScanLines)
-
-	scanner.Scan()
-	head := scanner.Text()
-
-	if head == "" {
-		fmt.Println("Error parsing connection: Empty request data")
+	buffer := make([]byte, 2048)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		fmt.Println("Could not read conn", err.Error())
 		return
 	}
 
-	parts := strings.Split(head, " ")
-	verb, path := parts[0], parts[1]
+	request, err := http.ReadRequest(bufio.NewReader(bytes.NewBuffer(buffer[:n])))
+	if err != nil {
+		fmt.Println("Could not parse request", err.Error())
+		return
+	}
 
-	if verb == GET && strings.Contains(path, "/files/") {
+	verb, pathObj := request.Method, request.URL
+	path := pathObj.Path
+
+	if strings.Contains(path, "/files/") {
 		splitPath := strings.Split(path, "files/")
 		filename := splitPath[1]
 		fullPath := strings.TrimRight(directory, "/") + "/" + filename
 
-		text, err := os.ReadFile(fullPath)
+		if verb == GET {
+			text, err := os.ReadFile(fullPath)
 
-		if err == nil {
-			fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s", len(text), text)
+			if err == nil {
+				fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s", len(text), text)
+				return
+			}
+		} else if verb == POST {
+			content, _ := io.ReadAll(request.Body)
+			os.WriteFile(fullPath, content, 0644)
+
+			fmt.Fprintf(conn, "HTTP/1.1 201 Created\r\n\r\n")
+			return
 		}
 	}
 
 	if verb == GET && strings.Contains(path, "/user-agent") {
-		var ua string
-
-		for scanner.Scan() {
-			line := scanner.Text()
-			if line == "" {
-				break
-			}
-			if strings.Contains(line, "User-Agent:") {
-				ua = strings.Split(line, "User-Agent: ")[1]
-				break
-			}
-		}
+		ua := request.UserAgent()
 
 		fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(ua), ua)
 		return
@@ -83,6 +85,8 @@ func main() {
 	flag.Parse()
 
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
+	defer l.Close()
+
 	if err != nil {
 		fmt.Println("Failed to bind to port 4221")
 		os.Exit(1)
