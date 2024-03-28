@@ -10,6 +10,8 @@ import (
 	"os"
 )
 
+const GET = "GET"
+
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
@@ -35,7 +37,15 @@ func main() {
 			continue
 		}
 
-		path := strings.Split(head, " ")[1]
+		parts := strings.Split(head, " ")
+		verb, path := parts[0], parts[1]
+
+		if verb == GET && strings.Contains(path, "/echo/") {
+			splitPath := strings.Split(path, "echo/")
+			text := splitPath[len(splitPath)-1:][0]
+			fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(text), text)
+			continue
+		}
 
 		if path != "/" {
 			conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
