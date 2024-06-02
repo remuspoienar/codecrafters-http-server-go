@@ -35,6 +35,14 @@ func handleConn(conn net.Conn) {
 
 	verb, pathObj := request.Method, request.URL
 	path := pathObj.Path
+	encoding := request.Header["Accept-Encoding"]
+	if len(encoding) == 0 {
+		encoding = request.Header["accept-encoding"]
+	}
+
+	if len(encoding) > 0 && !strings.Contains("gzip compress deflate br zstd identity *", encoding[0]) {
+		encoding = []string{}
+	}
 
 	if strings.Contains(path, "/files/") {
 		splitPath := strings.Split(path, "files/")
@@ -67,7 +75,12 @@ func handleConn(conn net.Conn) {
 	if verb == GET && strings.Contains(path, "/echo/") {
 		splitPath := strings.Split(path, "echo/")
 		text := splitPath[len(splitPath)-1:][0]
-		fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(text), text)
+
+		respEncoding := ""
+		if len(encoding) > 0 {
+			respEncoding = fmt.Sprintf("Content-Encoding: %s\r\n", strings.Join(encoding, ", "))
+		}
+		fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\n%sContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", respEncoding, len(text), text)
 
 		return
 	}
