@@ -3,13 +3,16 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -87,8 +90,20 @@ func handleConn(conn net.Conn) {
 		respEncoding := ""
 		if len(validEncodings) > 0 {
 			sendEncoding := strings.Join(validEncodings, ", ")
-
 			respEncoding = fmt.Sprintf("Content-Encoding: %s\r\n", sendEncoding)
+
+			if slices.IndexFunc(validEncodings, func(value string) bool { return value == "gzip" }) != -1 {
+				var b bytes.Buffer
+				gz := gzip.NewWriter(&b)
+				if _, err := gz.Write([]byte(text)); err != nil {
+					log.Fatal(err)
+				}
+				if err := gz.Close(); err != nil {
+					log.Fatal(err)
+				}
+
+				text = string(b.Bytes())
+			}
 		}
 		fmt.Fprintf(conn, "HTTP/1.1 200 OK\r\n%sContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", respEncoding, len(text), text)
 
